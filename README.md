@@ -10,5 +10,6 @@ Video Hashing based on One-Shot Video Object Segmentation
 
 `2017.5.1` complete extracting 4096-d features of image from pre-trained model
 
+`2017.5.2` try to visualize the feature map of all FCN layers
 
 continuing...
