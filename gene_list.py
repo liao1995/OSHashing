@@ -3,12 +3,12 @@ import sys
 import numpy as np
 
 database_root = 'database'
-S_E = 'Images/The.Big.Bang.Theory.S01E01.720p.BluRay.x264-SiNNERS.mkv_0_33024'
+S_E = 'SegResults/The.Big.Bang.Theory.S01E01.720p.BluRay.x264-SiNNERS.mkv_0_33024'
 train_list_file = os.path.join(database_root, 'train_list')
 valid_list_file = os.path.join(database_root, 'valid_list')
-test_list_file = os.path.join(database_root, 'test_list')
-train_ratio = 0.6
-valid_ratio = 0.3
+#test_list_file = os.path.join(database_root, 'test_list')
+train_ratio = 0.7
+#valid_ratio = 0.3
 
 
 def get_label_dict():
@@ -59,13 +59,14 @@ for name in names:
 
 num_all_samples = len(data_list)
 data_list = np.array(data_list)
+write_list(data_list, os.path.join(database_root, 'data_list'))
 np.random.shuffle(data_list)
 num_train_samples = int(num_all_samples * train_ratio)
-num_valid_samples = int(num_all_samples * valid_ratio)
+#num_valid_samples = int(num_all_samples * valid_ratio)
 train_list = data_list[:num_train_samples]
-valid_list = data_list[num_train_samples:num_train_samples+num_valid_samples]
-test_list = data_list[num_train_samples+num_valid_samples:] 
+valid_list = data_list[num_train_samples:]
+#test_list = data_list[num_train_samples+num_valid_samples:] 
 write_list(train_list, train_list_file)
 write_list(valid_list, valid_list_file)
-write_list(test_list, test_list_file)
+#write_list(test_list, test_list_file)
 

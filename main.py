@@ -9,10 +9,11 @@ sys.path.append(os.path.abspath(root_folder))
 os.chdir(root_folder)
 
 parent_path = os.path.join('models', 'OSVOS_parent', 'OSVOS_parent.ckpt-50000')
-train_root = 'Images'
-anno_root = 'Annotations'
-result_root = 'Results'
+train_root = 'database/Images'
+anno_root = 'database/Annotations'
+result_root = 'database/Results'
 logs_root = 'models'
+num_classes = 15
 
 S_E = 'The.Big.Bang.Theory.S01E01.720p.BluRay.x264-SiNNERS.mkv_0_33024'
 
@@ -40,4 +41,4 @@ for name in os.listdir(os.path.join(train_root, S_E)):
     test_images_path = os.path.join(train_root, S_E, name, seq)
     train_image_path = os.path.join(test_images_path, filename+'.jpg')
     train_label_path = os.path.join(anno_root, S_E, name, seq, filename+'.png')
-    start (train_image_path, train_label_path, test_images_path, result_path, parent_path, logs_path, seqname)
+    start (num_classes, train_image_path, train_label_path, test_images_path, result_path, parent_path, logs_path, seqname)

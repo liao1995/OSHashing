@@ -18,7 +18,7 @@ print 'loaded {0} images'.format(len(paths))
 paths = np.array(paths)
 labels = np.array(labels)
 
-ckpt_path = 'models/vgg_bbt.ckpt-300000'
+ckpt_path = 'models/vgg_bbt_seg.ckpt-200000'
 # parameters
 n_classes = 15
 # placeholder
@@ -45,7 +45,7 @@ with tf.device('/gpu:0'):
       batch_y = np.expand_dims(batch_y, 0)
       ep = sess.run(end_points, feed_dict={x: batch_x, y: batch_y})
       cnn_features = np.squeeze(ep['vgg_16/fc7'])
-      dest_path = paths[i].replace('Images', 'CNNFeatures').replace('.jpg', '.mat')
+      dest_path = paths[i].replace('SegResults', 'SegCNNFeatures').replace('.jpg', '.mat')
       dest_dirname = os.path.dirname(dest_path)
       if not os.path.exists(dest_dirname): os.makedirs(dest_dirname)
       d = {}
