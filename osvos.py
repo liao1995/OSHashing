@@ -14,6 +14,7 @@ import sys
 from datetime import datetime
 import os
 import scipy.misc
+import scipy.io as sio
 from PIL import Image
 
 slim = tf.contrib.slim
@@ -26,7 +27,7 @@ def osvos_arg_scope(weight_decay=0.0002):
     Returns:
     An arg_scope.
     """
-    with slim.arg_scope([slim.conv2d, slim.convolution2d_transpose],
+    with slim.arg_scope([slim.conv2d, slim.convolution2d_transpose, slim.fully_connected],
                         activation_fn=tf.nn.relu,
                         weights_initializer=tf.random_normal_initializer(stddev=0.001),
                         weights_regularizer=slim.l2_regularizer(weight_decay),
@@ -52,10 +53,13 @@ def crop_features(feature, out_size):
     return tf.reshape(slice_input, [int(feature.get_shape()[0]), out_size[1], out_size[2], int(feature.get_shape()[3])])
 
 
-def osvos(inputs, scope='osvos'):
+def osvos(inputs, num_classes, dropout_keep_prob=0.5, scope='osvos'):
     """Defines the OSVOS network
     Args:
     inputs: Tensorflow placeholder that contains the input image
+    num_classes: number of classes in the classification network part
+    dropout_keep_prob: the probability that activations are kept in the dropout
+            layers during training.
     scope: Scope name for the network
     Returns:
     net: Output Tensor of the network
@@ -78,6 +82,26 @@ def osvos(inputs, scope='osvos'):
             net_4 = slim.repeat(net, 3, slim.conv2d, 512, [3, 3], scope='conv4')
             net = slim.max_pool2d(net_4, [2, 2], scope='pool4')
             net_5 = slim.repeat(net, 3, slim.conv2d, 512, [3, 3], scope='conv5')
+
+            # LIAO: Fully connected layer for classification
+            fc = slim.conv2d(net_5, 4096, [10, 10], padding='VALID', scope='fc6')
+            fc = slim.dropout(fc, 0.5, is_training=True, scope='dropout6')
+            fc = slim.conv2d(fc, 4096, [1, 1], scope='fc7')
+            fc = slim.dropout(fc, 0.5, is_training=True, scope='dropout7')
+            fc = slim.conv2d(fc, num_classes, [1, 1], activation_fn=None,
+                            normalizer_fn=None, scope='fc8')
+            fc = tf.squeeze(fc, [1, 2], name='fc8/squeezed')
+
+#            net_1 = slim.repeat(inputs, 2, slim.conv2d, 64, [3, 3], scope='conv1')
+#            net = slim.max_pool2d(net_1, [2, 2], scope='pool1')
+#            net_2 = slim.repeat(net, 2, slim.conv2d, 128, [3, 3], scope='conv2')
+#            net = slim.max_pool2d(net_2, [2, 2], scope='pool2')
+#            net_3 = slim.repeat(net, 3, slim.conv2d, 256, [3, 3], scope='conv3')
+#            net = slim.max_pool2d(net_3, [2, 2], scope='pool3')
+#            net_4 = slim.repeat(net, 3, slim.conv2d, 512, [3, 3], scope='conv4')
+#            net = slim.max_pool2d(net_4, [2, 2], scope='pool4')
+#            net_5 = slim.repeat(net, 3, slim.conv2d, 512, [3, 3], scope='conv5')
+
 
             # Get side outputs of the network
             with slim.arg_scope([slim.conv2d],
@@ -109,6 +133,13 @@ def osvos(inputs, scope='osvos'):
                     side_5_s = crop_features(side_5_s, im_size)
                     utils.collect_named_outputs(end_points_collection, 'osvos/score-dsn_5-cr', side_5_s)
 
+                    # Visualization
+#                    net_1_visual = slim.convolution2d_transpose(net_1, 3, 2, 1, scope='conv1_3_visual')
+#                    net_2_visual = slim.convolution2d_transpose(net_2, 3, 4, 2, scope='conv2_3_visual')
+#                    net_3_visual = slim.convolution2d_transpose(net_3, 3, 8, 4, scope='conv3_3_visual')
+#                    net_4_visual = slim.convolution2d_transpose(net_4, 3, 16, 8, scope='conv4_3_visual')
+#                    net_5_visual = slim.convolution2d_transpose(net_5, 3, 32, 16, scope='conv5_3_visual')
+
                     # Main output
                     side_2_f = slim.convolution2d_transpose(side_2, 16, 4, 2, scope='score-multi2-up')
                     side_2_f = crop_features(side_2_f, im_size)
@@ -127,7 +158,7 @@ def osvos(inputs, scope='osvos'):
                 net = slim.conv2d(concat_side, 1, [1, 1], scope='upscore-fuse')
 
         end_points = slim.utils.convert_collection_to_dict(end_points_collection)
-        return net, end_points
+        return net, fc, end_points
 
 
 def upsample_filt(size):
@@ -261,69 +292,6 @@ def class_balanced_cross_entropy_loss_theoretical(output, label):
     return final_loss
 
 
-def load_caffe_weights(weights_path):
-    """Initialize the network parameters from a .npy caffe weights file
-    Args:
-    Path to the .npy file containing the value of the network parameters
-    Returns:
-    Function that takes a session and initializes the network
-    """
-    osvos_weights = np.load(weights_path).item()
-    vars_corresp = dict()
-    vars_corresp['osvos/conv1/conv1_1/weights'] = osvos_weights['conv1_1_w']
-    vars_corresp['osvos/conv1/conv1_1/biases'] = osvos_weights['conv1_1_b']
-    vars_corresp['osvos/conv1/conv1_2/weights'] = osvos_weights['conv1_2_w']
-    vars_corresp['osvos/conv1/conv1_2/biases'] = osvos_weights['conv1_2_b']
-
-    vars_corresp['osvos/conv2/conv2_1/weights'] = osvos_weights['conv2_1_w']
-    vars_corresp['osvos/conv2/conv2_1/biases'] = osvos_weights['conv2_1_b']
-    vars_corresp['osvos/conv2/conv2_2/weights'] = osvos_weights['conv2_2_w']
-    vars_corresp['osvos/conv2/conv2_2/biases'] = osvos_weights['conv2_2_b']
-
-    vars_corresp['osvos/conv3/conv3_1/weights'] = osvos_weights['conv3_1_w']
-    vars_corresp['osvos/conv3/conv3_1/biases'] = osvos_weights['conv3_1_b']
-    vars_corresp['osvos/conv3/conv3_2/weights'] = osvos_weights['conv3_2_w']
-    vars_corresp['osvos/conv3/conv3_2/biases'] = osvos_weights['conv3_2_b']
-    vars_corresp['osvos/conv3/conv3_3/weights'] = osvos_weights['conv3_3_w']
-    vars_corresp['osvos/conv3/conv3_3/biases'] = osvos_weights['conv3_3_b']
-
-    vars_corresp['osvos/conv4/conv4_1/weights'] = osvos_weights['conv4_1_w']
-    vars_corresp['osvos/conv4/conv4_1/biases'] = osvos_weights['conv4_1_b']
-    vars_corresp['osvos/conv4/conv4_2/weights'] = osvos_weights['conv4_2_w']
-    vars_corresp['osvos/conv4/conv4_2/biases'] = osvos_weights['conv4_2_b']
-    vars_corresp['osvos/conv4/conv4_3/weights'] = osvos_weights['conv4_3_w']
-    vars_corresp['osvos/conv4/conv4_3/biases'] = osvos_weights['conv4_3_b']
-
-    vars_corresp['osvos/conv5/conv5_1/weights'] = osvos_weights['conv5_1_w']
-    vars_corresp['osvos/conv5/conv5_1/biases'] = osvos_weights['conv5_1_b']
-    vars_corresp['osvos/conv5/conv5_2/weights'] = osvos_weights['conv5_2_w']
-    vars_corresp['osvos/conv5/conv5_2/biases'] = osvos_weights['conv5_2_b']
-    vars_corresp['osvos/conv5/conv5_3/weights'] = osvos_weights['conv5_3_w']
-    vars_corresp['osvos/conv5/conv5_3/biases'] = osvos_weights['conv5_3_b']
-
-    vars_corresp['osvos/conv2_2_16/weights'] = osvos_weights['conv2_2_16_w']
-    vars_corresp['osvos/conv2_2_16/biases'] = osvos_weights['conv2_2_16_b']
-    vars_corresp['osvos/conv3_3_16/weights'] = osvos_weights['conv3_3_16_w']
-    vars_corresp['osvos/conv3_3_16/biases'] = osvos_weights['conv3_3_16_b']
-    vars_corresp['osvos/conv4_3_16/weights'] = osvos_weights['conv4_3_16_w']
-    vars_corresp['osvos/conv4_3_16/biases'] = osvos_weights['conv4_3_16_b']
-    vars_corresp['osvos/conv5_3_16/weights'] = osvos_weights['conv5_3_16_w']
-    vars_corresp['osvos/conv5_3_16/biases'] = osvos_weights['conv5_3_16_b']
-
-    vars_corresp['osvos/score-dsn_2/weights'] = osvos_weights['score-dsn_2_w']
-    vars_corresp['osvos/score-dsn_2/biases'] = osvos_weights['score-dsn_2_b']
-    vars_corresp['osvos/score-dsn_3/weights'] = osvos_weights['score-dsn_3_w']
-    vars_corresp['osvos/score-dsn_3/biases'] = osvos_weights['score-dsn_3_b']
-    vars_corresp['osvos/score-dsn_4/weights'] = osvos_weights['score-dsn_4_w']
-    vars_corresp['osvos/score-dsn_4/biases'] = osvos_weights['score-dsn_4_b']
-    vars_corresp['osvos/score-dsn_5/weights'] = osvos_weights['score-dsn_5_w']
-    vars_corresp['osvos/score-dsn_5/biases'] = osvos_weights['score-dsn_5_b']
-
-    vars_corresp['osvos/upscore-fuse/weights'] = osvos_weights['new-score-weighting_w']
-    vars_corresp['osvos/upscore-fuse/biases'] = osvos_weights['new-score-weighting_b']
-    return slim.assign_from_values_fn(vars_corresp)
-
-
 def parameter_lr():
     """Specify the relative learning rate for every parameter. The final learning rate
     in every parameter will be the one defined here multiplied by the global one
@@ -363,6 +331,14 @@ def parameter_lr():
     vars_corresp['osvos/conv5/conv5_2/biases'] = 2
     vars_corresp['osvos/conv5/conv5_3/weights'] = 1
     vars_corresp['osvos/conv5/conv5_3/biases'] = 2
+	
+	# LIAO: fully connected layer learning rate
+    vars_corresp['osvos/fc6/weights'] = 100000
+    vars_corresp['osvos/fc6/biases'] = 200000
+    vars_corresp['osvos/fc7/weights'] = 100000
+    vars_corresp['osvos/fc7/biases'] = 200000
+    vars_corresp['osvos/fc8/weights'] = 100000
+    vars_corresp['osvos/fc8/biases'] = 200000
 
     vars_corresp['osvos/conv2_2_16/weights'] = 1
     vars_corresp['osvos/conv2_2_16/biases'] = 2
@@ -387,7 +363,7 @@ def parameter_lr():
     return vars_corresp
 
 
-def _train(dataset, initial_ckpt, supervison, learning_rate, logs_path, max_training_iters, save_step, display_step,
+def _train(dataset, num_classes, initial_ckpt, supervison, learning_rate, logs_path, max_training_iters, save_step, display_step,
            global_step, iter_mean_grad=1, batch_size=1, momentum=0.9, resume_training=False, config=None, finetune=1,
            test_image_path=None, ckpt_name="osvos"):
     """Train OSVOS
@@ -422,10 +398,12 @@ def _train(dataset, initial_ckpt, supervison, learning_rate, logs_path, max_trai
     # Prepare the input data
     input_image = tf.placeholder(tf.float32, [batch_size, None, None, 3])
     input_label = tf.placeholder(tf.float32, [batch_size, None, None, 1])
+    # LIAO: image label for classification part
+    image_label = tf.placeholder(tf.float32, [batch_size, num_classes])
 
     # Create the network
     with slim.arg_scope(osvos_arg_scope()):
-        net, end_points = osvos(input_image)
+        net, fc, end_points = osvos(input_image, num_classes)
 
     # Initialize weights from pre-trained model
     if finetune == 0:
@@ -446,6 +424,13 @@ def _train(dataset, initial_ckpt, supervison, learning_rate, logs_path, max_trai
         main_loss = class_balanced_cross_entropy_loss(net, input_label)
         tf.summary.scalar('main_loss', main_loss)
 
+        # LIAO: define the image classification loss
+        classification_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=fc, labels=image_label)) 
+        correct_pred = tf.equal(tf.argmax(fc, 1), tf.argmax(image_label, 1))
+        accuray = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
+        tf.summary.scalar('classification_loss', classification_loss)
+        tf.summary.scalar('accuray', accuray)
+
         if supervison == 1:
             output_loss = dsn_2_loss + dsn_3_loss + dsn_4_loss + dsn_5_loss + main_loss
         elif supervison == 2:
@@ -456,6 +441,8 @@ def _train(dataset, initial_ckpt, supervison, learning_rate, logs_path, max_trai
             sys.exit('Incorrect supervision id, select 1 for supervision of the side outputs, 2 for weak supervision '
                      'of the side outputs and 3 for no supervision of the side outputs')
         total_loss = output_loss + tf.add_n(tf.losses.get_regularization_losses())
+        # LIAO: add classification loss to total loss
+        total_loss += classification_loss
         tf.summary.scalar('total_loss', total_loss)
 
     # Define optimization method
@@ -500,6 +487,20 @@ def _train(dataset, initial_ckpt, supervison, learning_rate, logs_path, max_trai
         print 'Init variable'
         sess.run(init)
 
+        # LIAO: restore the fc7 weights from VGG-model
+        vgg_model_path = 'models/vgg_16.ckpt'
+        reader = tf.train.NewCheckpointReader(vgg_model_path)
+        var_to_shape_map = reader.get_variable_to_shape_map()
+        vars_corresp = dict()
+        for v in var_to_shape_map:
+            if "fc7" in v:
+                vars_corresp[v] = slim.get_model_variables(v.replace("vgg_16", "osvos"))[0]
+        init_fn = slim.assign_from_checkpoint_fn(
+                vgg_model_path,
+                vars_corresp)
+        init_fn(sess)
+
+
         # op to write logs to Tensorboard
         summary_writer = tf.summary.FileWriter(logs_path, graph=tf.get_default_graph())
 
@@ -522,6 +523,8 @@ def _train(dataset, initial_ckpt, supervison, learning_rate, logs_path, max_trai
                 # init_weights(sess)
                 var_list = []
                 for var in tf.global_variables():
+                    # LIAO: ignore lack of fc
+                    if var.name.find('fc') != -1: continue
                     var_type = var.name.split('/')[-1]
                     if 'weights' in var_type or 'bias' in var_type:
                         var_list.append(var)
@@ -535,13 +538,35 @@ def _train(dataset, initial_ckpt, supervison, learning_rate, logs_path, max_trai
         while step < max_training_iters + 1:
             # Average the gradient
             for _ in range(0, iter_mean_grad):
-                batch_image, batch_label = dataset.next_batch(batch_size, 'train')
-                image = preprocess_img(batch_image[0])
-                label = preprocess_labels(batch_label[0])
+                # LIAO: classification label one-hot encoding
+                batch_image, batch_label, batch_cls_label = dataset.next_batch(batch_size, 'train')
+                for i in range(batch_size):
+                   image = batch_image[i]
+                   if type(image) is not np.ndarray:
+                        image = np.array(Image.open(image), dtype=np.uint8)
+                   image = image[:, :, ::-1]
+                   image = np.subtract(image, np.array((104.00699, 116.66877, 122.67892), dtype=np.float32))
+                   batch_image[i] = image 
+                   label = batch_label[i]
+                   if type(label) is not np.ndarray:
+                        label = np.array(Image.open(label), dtype=np.uint8)
+                   max_mask = np.max(label) * 0.5
+                   label = np.greater(label, max_mask)
+                   batch_label[i] = np.expand_dims(label, axis=3)
+                image = batch_image
+                label = batch_label
+                #image = preprocess_img(batch_image[0])
+                #label = preprocess_labels(batch_label[0])
+                cls_label = slim.one_hot_encoding(batch_cls_label, num_classes).eval(session=sess) 
+
+                # LIAO: classification label
                 run_res = sess.run([total_loss, merged_summary_op] + grad_accumulator_ops,
-                                   feed_dict={input_image: image, input_label: label})
+                                   feed_dict={input_image: image, input_label: label, image_label: cls_label})
                 batch_loss = run_res[0]
                 summary = run_res[1]
+
+                cls_loss = sess.run(classification_loss, feed_dict={input_image: image, image_label:cls_label})
+                acc = sess.run(accuray, feed_dict={input_image:image, image_label:cls_label})
 
             # Apply the gradients
             sess.run(apply_gradient_op)  # Momentum updates here its statistics
@@ -552,6 +577,7 @@ def _train(dataset, initial_ckpt, supervison, learning_rate, logs_path, max_trai
             # Display training status
             if step % display_step == 0:
                 print >> sys.stderr, "{} Iter {}: Training Loss = {:.4f}".format(datetime.now(), step, batch_loss)
+                print >> sys.stderr, "\t\tClassification Loss = {:.6f}, accuracy = {:.6f}".format(cls_loss, acc)
 
             # Save a checkpoint
             if step % save_step == 0:
@@ -570,7 +596,7 @@ def _train(dataset, initial_ckpt, supervison, learning_rate, logs_path, max_trai
         print('Finished training.')
 
 
-def train_parent(dataset, initial_ckpt, supervison, learning_rate, logs_path, max_training_iters, save_step,
+def train_parent(dataset, num_classes, initial_ckpt, supervison, learning_rate, logs_path, max_training_iters, save_step,
                  display_step, global_step, iter_mean_grad=1, batch_size=1, momentum=0.9, resume_training=False,
                  config=None, test_image_path=None, ckpt_name="osvos"):
     """Train OSVOS parent network
@@ -579,12 +605,12 @@ def train_parent(dataset, initial_ckpt, supervison, learning_rate, logs_path, ma
     Returns:
     """
     finetune = 0
-    _train(dataset, initial_ckpt, supervison, learning_rate, logs_path, max_training_iters, save_step, display_step,
+    _train(dataset, num_classes, initial_ckpt, supervison, learning_rate, logs_path, max_training_iters, save_step, display_step,
            global_step, iter_mean_grad, batch_size, momentum, resume_training, config, finetune, test_image_path,
            ckpt_name)
 
 
-def train_finetune(dataset, initial_ckpt, supervison, learning_rate, logs_path, max_training_iters, save_step,
+def train_finetune(dataset, num_classes, initial_ckpt, supervison, learning_rate, logs_path, max_training_iters, save_step,
                    display_step, global_step, iter_mean_grad=1, batch_size=1, momentum=0.9, resume_training=False,
                    config=None, test_image_path=None, ckpt_name="osvos"):
     """Finetune OSVOS
@@ -593,12 +619,12 @@ def train_finetune(dataset, initial_ckpt, supervison, learning_rate, logs_path, 
     Returns:
     """
     finetune = 1
-    _train(dataset, initial_ckpt, supervison, learning_rate, logs_path, max_training_iters, save_step, display_step,
+    _train(dataset, num_classes, initial_ckpt, supervison, learning_rate, logs_path, max_training_iters, save_step, display_step,
            global_step, iter_mean_grad, batch_size, momentum, resume_training, config, finetune, test_image_path,
            ckpt_name)
 
 
-def test(dataset, checkpoint_file, result_path, config=None):
+def test(dataset, num_classes, checkpoint_file, result_path, config=None):
     """Test one sequence
     Args:
     dataset: Reference to a Dataset object instance
@@ -620,7 +646,7 @@ def test(dataset, checkpoint_file, result_path, config=None):
 
     # Create the cnn
     with slim.arg_scope(osvos_arg_scope()):
-        net, end_points = osvos(input_image)
+        net, fc, end_points = osvos(input_image, num_classes)
     probabilities = tf.nn.sigmoid(net)
     global_step = tf.Variable(0, name='global_step', trainable=False)
 
@@ -641,6 +667,9 @@ def test(dataset, checkpoint_file, result_path, config=None):
             res_np = res.astype(np.float32)[0, :, :, 0] > 162.0/255.0
             scipy.misc.imsave(os.path.join(result_path, curr_frame), res_np.astype(np.float32))
             print 'Saving ' + os.path.join(result_path, curr_frame)
-
+            ep = sess.run(end_points, feed_dict={input_image: image})
+            sio.savemat('end_points.mat', ep)
+            for key, value in ep.items():
+                print key + ": " + str(value.shape)
 
 
