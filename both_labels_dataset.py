@@ -51,6 +51,7 @@ class Dataset:
         self.labels_train = []
         self.labels_train_path = []
         self.cls_labels_train = []
+        self.cls_labels_train_path = []
         for idx, line in enumerate(train_paths):
             if store_memory:
                 img = Image.open(os.path.join(database_root, str(line.split('\t')[0])))
@@ -77,8 +78,10 @@ class Dataset:
                     print('Loaded ' + str(idx) + ' train images')
             self.images_train_path.append(os.path.join(database_root, str(line.split('\t')[0])))
             self.labels_train_path.append(os.path.join(database_root, str(line.split('\t')[1])))
+            self.cls_labels_train_path.append(int(line.split('\t')[2]))
         self.images_train_path = np.array(self.images_train_path)
         self.labels_train_path = np.array(self.labels_train_path)
+        self.cls_labels_train_path = np.array(self.cls_labels_train_path)
 
         # Load testing images (path) and labels 
         self.images_test = []
@@ -118,10 +121,11 @@ class Dataset:
                 if self.store_memory:
                     images = [self.images_train[l] for l in idx]
                     labels = [self.labels_train[l] for l in idx]
+                    cls_labels = [self.cls_labels_train[l] for l in idx]
                 else:
                     images = [self.images_train_path[l] for l in idx]
                     labels = [self.labels_train_path[l] for l in idx]
-                cls_labels = [self.cls_labels_train[l] for l in idx]
+                    cls_labels = [self.cls_labels_train_path[l] for l in idx]
                 self.train_ptr += batch_size
             else:
                 old_idx = np.array(self.train_idx[self.train_ptr:])
@@ -133,13 +137,15 @@ class Dataset:
                     labels_1 = [self.labels_train[l] for l in old_idx]
                     images_2 = [self.images_train[l] for l in idx]
                     labels_2 = [self.labels_train[l] for l in idx]
+                    cls_labels_1 = [self.cls_labels_train[l] for l in old_idx]
+                    cls_labels_2 = [self.cls_labels_train[l] for l in idx]
                 else:
                     images_1 = [self.images_train_path[l] for l in old_idx]
                     labels_1 = [self.labels_train_path[l] for l in old_idx]
                     images_2 = [self.images_train_path[l] for l in idx]
                     labels_2 = [self.labels_train_path[l] for l in idx]
-                cls_labels_1 = [self.cls_labels_train[l] for l in old_idx]
-                cls_labels_2 = [self.cls_labels_train[l] for l in idx]
+                    cls_labels_1 = [self.cls_labels_train_path[l] for l in old_idx]
+                    cls_labels_2 = [self.cls_labels_train_path[l] for l in idx]
                 images = images_1 + images_2
                 labels = labels_1 + labels_2
                 cls_labels = cls_labels_1 + cls_labels_2
